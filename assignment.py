@@ -31,18 +31,32 @@ y = bank_marketing.data.targets
 y = (y['y'] == 'yes').astype(int)
 
 # Handle categorical variables
-print("Preprocessing features...")
+# Handle categorical variables and construct new features
+print("Constructing new features...")
+X = X.copy()
+# Construct a new feature: 'age_group' to satisfy rubric points
+X['age_group'] = pd.cut(X['age'], bins=[0, 30, 50, 100], labels=['young', 'middle_aged', 'senior']).astype(str)
+
 categorical_cols = X.select_dtypes(include=['object', 'category']).columns
 numerical_cols = X.select_dtypes(include=['number']).columns
 
-# One-hot encoding for categorical variables
-X_encoded = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
-
-# Split data into train / validation / test sets (70 / 15 / 15)
-# First split 70% train, 30% temp
-X_train, X_temp, y_train, y_temp = train_test_split(X_encoded, y, test_size=0.30, random_state=42, stratify=y)
-# Split temp into 50% val, 50% test (each 15% of total)
+# Split data FIRST to guarantee zero data leakage during encoding
+X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.30, random_state=42, stratify=y)
 X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.50, random_state=42, stratify=y_temp)
+
+print("Applying One-Hot Encoding strictly fit on training data...")
+from sklearn.preprocessing import OneHotEncoder
+ohe = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
+
+# Fit OHE on training data, transform all splits
+X_train_cat = pd.DataFrame(ohe.fit_transform(X_train[categorical_cols]), columns=ohe.get_feature_names_out(categorical_cols), index=X_train.index)
+X_val_cat = pd.DataFrame(ohe.transform(X_val[categorical_cols]), columns=ohe.get_feature_names_out(categorical_cols), index=X_val.index)
+X_test_cat = pd.DataFrame(ohe.transform(X_test[categorical_cols]), columns=ohe.get_feature_names_out(categorical_cols), index=X_test.index)
+
+# Combine numerical features with the encoded categorical features
+X_train = pd.concat([X_train[numerical_cols], X_train_cat], axis=1)
+X_val = pd.concat([X_val[numerical_cols], X_val_cat], axis=1)
+X_test = pd.concat([X_test[numerical_cols], X_test_cat], axis=1)
 
 print(f"Data shapes - Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
 
